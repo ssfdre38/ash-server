@@ -345,6 +345,82 @@ public class ModelsController : ControllerBase
         }
     }
 
+    public class TtsRequest
+    {
+        [System.Text.Json.Serialization.JsonPropertyName("text")]
+        public string Text { get; set; } = "";
+
+        [System.Text.Json.Serialization.JsonPropertyName("voice")]
+        public string Voice { get; set; } = "en_US-amy-medium";
+    }
+
+    [HttpPost("tts")]
+    [Authorize]
+    public async Task<IActionResult> GenerateTts([FromBody] TtsRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.Text))
+            return BadRequest(new { error = "Text is required" });
+
+        try
+        {
+            var filename = $"tts_{Guid.NewGuid().ToString("N")[..12]}.wav";
+            var webRoot = _env.WebRootPath ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
+            var uploadsDir = Path.Combine(webRoot, "uploads");
+            if (!Directory.Exists(uploadsDir))
+                Directory.CreateDirectory(uploadsDir);
+                
+            var outputPath = Path.Combine(uploadsDir, filename);
+
+            var voiceName = req.Voice ?? "en_US-amy-medium";
+            var modelPath = $@"C:\Users\admin\piper\piper\models\{voiceName}.onnx";
+            var configPath = $@"C:\Users\admin\piper\piper\models\{voiceName}.onnx.json";
+
+            if (!System.IO.File.Exists(modelPath))
+            {
+                modelPath = @"C:\Users\admin\piper\piper\models\en_US-amy-medium.onnx";
+                configPath = @"C:\Users\admin\piper\piper\models\en_US-amy-medium.onnx.json";
+            }
+
+            var piperExe = @"C:\Users\admin\piper\piper\piper.exe";
+            if (!System.IO.File.Exists(piperExe))
+                return StatusCode(500, new { error = "piper.exe was not found on the server." });
+
+            var escapedText = req.Text.Replace("\"", "\"\"");
+            
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "cmd.exe",
+                Arguments = $"/c chcp 65001 >nul && echo {escapedText} | \"{piperExe}\" -m \"{modelPath}\" -c \"{configPath}\" -f \"{outputPath}\"",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardError = true
+            };
+
+            using (var process = System.Diagnostics.Process.Start(psi))
+            {
+                if (process == null)
+                    throw new Exception("Failed to start TTS generator process.");
+
+                var stderr = await process.StandardError.ReadToEndAsync();
+                await process.WaitForExitAsync();
+
+                if (process.ExitCode != 0)
+                {
+                    throw new Exception($"TTS generation process exited with code {process.ExitCode}. Stderr: {stderr}");
+                }
+            }
+
+            if (!System.IO.File.Exists(outputPath))
+                throw new Exception("TTS output file was not created.");
+
+            return Ok(new { url = $"/uploads/{filename}" });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { error = ex.Message });
+        }
+    }
+
     [HttpPost("upload")]
     [Authorize]
     [RequestSizeLimit(50 * 1024 * 1024)] // 50 MB
