@@ -318,6 +318,33 @@ public class ModelsController : ControllerBase
             .Select(p => new { p.Id, p.Name, p.Description, tool_count = p.Tools.Count })
     });
 
+    public class ExecuteToolRequest
+    {
+        [System.Text.Json.Serialization.JsonPropertyName("tool")]
+        public string Tool { get; set; } = "";
+        
+        [System.Text.Json.Serialization.JsonPropertyName("arguments")]
+        public System.Text.Json.JsonElement Arguments { get; set; }
+    }
+
+    [HttpPost("tools/execute")]
+    [Authorize]
+    public async Task<IActionResult> ExecuteToolEndpoint([FromBody] ExecuteToolRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.Tool))
+            return BadRequest(new { error = "tool is required" });
+            
+        try
+        {
+            var result = await _plugins.ExecuteTool(req.Tool, req.Arguments);
+            return Ok(new { result });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { error = ex.Message });
+        }
+    }
+
     [HttpPost("upload")]
     [Authorize]
     [RequestSizeLimit(50 * 1024 * 1024)] // 50 MB

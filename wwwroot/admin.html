@@ -2231,6 +2231,8 @@ async function addBackend() {
     const payload = {
       name: name,
       type: type,
+      base_url: base_url,
+      api_key: api_key || null,
       baseUrl: base_url,
       apiKey: api_key || null
     };
